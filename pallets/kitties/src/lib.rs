@@ -15,21 +15,23 @@ pub use pallet::*;
 // mod benchmarking;
 use frame_support::inherent::Vec;
 use frame_support::pallet_prelude::*;
+use frame_support::traits::Randomness;
+use frame_support::traits::Time;
 use frame_system::pallet_prelude::*;
 
+pub type CreatedDate<T> = <<T as Config>::CreatedDate as frame_support::traits::Time>::Moment;
 #[frame_support::pallet]
 pub mod pallet {
 	pub use super::*;
 
-	pub type DNA = Vec<u8>;
-
 	#[derive(TypeInfo, Encode, Decode, Default)]
 	#[scale_info(skip_type_params(T))]
 	pub struct Kitty<T: Config> {
-		dna: DNA,
+		dna: T::Hash,
 		owner: T::AccountId,
 		price: u32,
 		gender: Gender,
+		created_date: CreatedDate<T>,
 	}
 
 	#[derive(TypeInfo, Encode, Decode, Debug)]
@@ -50,14 +52,22 @@ pub mod pallet {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-		// #[pallet::constant]
-		// type MaxLength: Get<u32>;
+		type CreatedDate: Time;
+
+		type RandomnessSource: Randomness<Self::Hash, Self::BlockNumber>;
+
+		#[pallet::constant]
+		type KittyLimit: Get<u32>;
 	}
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(super) trait Store)]
 	#[pallet::without_storage_info]
 	pub struct Pallet<T>(_);
+
+	#[pallet::storage]
+	#[pallet::getter(fn nonce)]
+	pub(super) type Nonce<T: Config> = StorageValue<_, u32, ValueQuery>;
 
 	// The pallet's runtime storage items.
 	// https://docs.substrate.io/v3/runtime/storage
@@ -69,25 +79,35 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn kitties)]
-	pub type Kitties<T: Config> = StorageMap<_, Blake2_128Concat, DNA, Kitty<T>, OptionQuery>;
+	pub type Kitties<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, Kitty<T>, OptionQuery>;
 
 	#[pallet::storage]
-	#[pallet::getter(fn kittyowner)]
-	pub type KittyOwner<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::AccountId, Vec<DNA>, ValueQuery>;
+	#[pallet::getter(fn kitty_owner)]
+	pub type KittyOwner<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		T::AccountId,
+		BoundedVec<T::Hash, T::KittyLimit>,
+		OptionQuery,
+	>;
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		KittyCreated(DNA, T::AccountId),
-		KittyChangeOwner(DNA, T::AccountId, T::AccountId),
+		KittyCreated(T::Hash, T::AccountId),
+		KittyChangeOwner(T::Hash, T::AccountId, T::AccountId),
+		DnaGenerated(T::Hash),
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
+		DuplicatedOwner,
+		ExceedLimit,
+		MoveValueNotExist,
+		MoveValueAlreadyExist,
 		/// Error names should be descriptive.
 		NoneValue,
 		/// Errors should have helpful documentation associated with them.
@@ -99,18 +119,24 @@ pub mod pallet {
 	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		/// An example dispatchable that takes a singles value as a parameter, writes the value to
-		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn create_kitty(origin: OriginFor<T>, dna: DNA, price: u32) -> DispatchResult {
+		pub fn create_kitty(origin: OriginFor<T>, price: u32) -> DispatchResult {
 			// Check that the extrinsic was signed and get the signer.
 			// This function will return an error if the extrinsic is not signed.
 			// https://docs.substrate.io/v3/runtime/origins
 			let owner = ensure_signed(origin)?;
 
+			let dna = Self::gen_dna()?;
+			let gender = Self::gen_gender()?;
+
 			// Create a new kitty
-			let gender = Self::gen_gender(dna.clone())?;
-			let kitty = Kitty::<T> { dna: dna.clone(), owner: owner.clone(), price, gender };
+			let kitty = Kitty::<T> {
+				dna: dna.clone(),
+				owner: owner.clone(),
+				price,
+				gender,
+				created_date: T::CreatedDate::now(),
+			};
 			Kitties::<T>::insert(&dna, kitty);
 
 			// Update the current quantity of kitty
@@ -120,11 +146,15 @@ pub mod pallet {
 
 			// Update owner's kitties
 			if <KittyOwner<T>>::contains_key(&owner) {
-				<KittyOwner<T>>::mutate(&owner, |dnas| dnas.push(dna.clone()));
+				<KittyOwner<T>>::try_mutate(&owner, |dnas| match dnas {
+					Some(_dnas) => _dnas.try_push(dna.clone()).map_err(|_| Error::<T>::ExceedLimit),
+					_ => Err(Error::<T>::NoneValue),
+				})?;
 			} else {
 				let mut dnas = Vec::new();
 				dnas.push(dna.clone());
-				<KittyOwner<T>>::insert(&owner, dnas);
+				let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(dnas);
+				<KittyOwner<T>>::insert(&owner, bounded_dnas);
 			}
 
 			// Emit an event.
@@ -137,10 +167,11 @@ pub mod pallet {
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn change_owner(
 			origin: OriginFor<T>,
-			dna: DNA,
+			dna: T::Hash,
 			new_owner: T::AccountId,
 		) -> DispatchResult {
 			let owner = ensure_signed(origin)?;
+			ensure!(owner != new_owner, Error::<T>::DuplicatedOwner);
 
 			// Update the new owner in Kitties storage
 			let kitty_by_dna = <Kitties<T>>::get(&dna);
@@ -151,17 +182,32 @@ pub mod pallet {
 				<Kitties<T>>::insert(&dna, kitty);
 			}
 
-			
 			// Update KittyOwner storage
 			// Remove the kitty no longer belong to the old owner
-			let kitties_except_a_specific = <KittyOwner<T>>::get(&owner)
-				.into_iter()
-				.filter(|_dna| *_dna != dna.clone())
-				.collect::<Vec<DNA>>();
-			<KittyOwner<T>>::insert(&owner, kitties_except_a_specific);
+			let kitty_owners = Self::kitty_owner(&owner);
+			ensure!(kitty_owners.is_some(), Error::<T>::MoveValueNotExist);
+			<KittyOwner<T>>::mutate(&owner, |dnas| {
+				if let Some(_dnas) = dnas {
+					_dnas.retain(|__dna| __dna != &dna);
+				}
+			});
 
 			// Add a new kitty to the new owner
-			<KittyOwner<T>>::mutate(&new_owner, |dnas| dnas.push(dna.clone()));
+			if <KittyOwner<T>>::contains_key(&new_owner) {
+				<KittyOwner<T>>::mutate(&new_owner, |dnas| {
+					if let Some(_dnas) = dnas {
+						_dnas
+							.try_push(dna.clone())
+							.expect("Already full! Can not receive any kitty more!");
+					}
+				});
+			} else {
+				let mut _dnas = Vec::new();
+				_dnas.push(dna.clone());
+
+				let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(_dnas);
+				<KittyOwner<T>>::insert(&new_owner, bounded_dnas);
+			}
 
 			// Emit an event
 			Self::deposit_event(Event::KittyChangeOwner(
@@ -177,11 +223,23 @@ pub mod pallet {
 
 // helper function
 impl<T: Config> Pallet<T> {
-	fn gen_gender(dna: DNA) -> Result<Gender, Error<T>> {
-		let mut gender = Gender::Male;
-		if dna.len() % 2 == 0 {
-			gender = Gender::Female;
-		}
-		Ok(gender)
+	fn gen_gender() -> Result<Gender, Error<T>> {
+		Ok(Gender::Male)
+	}
+
+	fn encode_and_update_nonce() -> Vec<u8> {
+		let nonce = Nonce::<T>::get();
+		Nonce::<T>::put(nonce.wrapping_add(1));
+		nonce.encode()
+	}
+
+	fn gen_dna() -> Result<T::Hash, Error<T>> {
+		let dna_nonce = Self::encode_and_update_nonce();
+
+		let (dna_random_seed, _) = T::RandomnessSource::random_seed();
+		let (dna, _) = T::RandomnessSource::random(&dna_nonce);
+
+		Self::deposit_event(Event::<T>::DnaGenerated(dna_random_seed));
+		Ok(dna)
 	}
 }

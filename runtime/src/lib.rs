@@ -269,9 +269,15 @@ impl pallet_template::Config for Runtime {
 	type Event = Event;
 }
 
+parameter_types! {
+	pub const KittyLimit: u32 = 1;
+}
 /// Configure the pallet-kitties in pallets/kitties.
 impl pallet_kitties::Config for Runtime {
 	type Event = Event;
+	type CreatedDate = Timestamp;
+	type KittyLimit = KittyLimit;
+	type RandomnessSource = RandomnessCollectiveFlip;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -292,7 +298,7 @@ construct_runtime!(
 		// Include the custom logic from the pallet-template in the runtime.
 		TemplateModule: pallet_template,
 		// Include the custom logic from the pallet-kitties in the runtime.
-		KittiesModule: pallet_kitties,
+		Kitties: pallet_kitties,
 	}
 );
 
