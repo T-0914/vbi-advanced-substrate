@@ -49,6 +49,16 @@ pub mod pallet {
 		}
 	}
 
+	pub enum StorageUpdateType {
+		CreateKitty,
+		ChangeOwner,
+	}
+
+	impl Default for StorageUpdateType {
+		fn default() -> Self {
+			Self::CreateKitty
+		}
+	}
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
@@ -152,30 +162,13 @@ pub mod pallet {
 			Kitties::<T>::insert(&dna, kitty);
 
 			// Update owner's kitties
-			match <KittyOwner<T>>::try_get(&owner) {
-				Ok(mut _kitties) => match _kitties.binary_search(&dna) {
-					Ok(_) => Err(<Error<T>>::KittyAlreadyExist.into()),
-					Err(_) => {
-						_kitties
-							.try_push(dna.clone())
-							.map_err(|_| <Error<T>>::KittyLimitReached)?;
-
-						<KittyOwner<T>>::insert(&owner, _kitties);
-
-						Self::deposit_event(Event::KittyCreated(dna.clone(), owner));
-						Ok(().into())
-					},
-				},
-				Err(_) => {
-					let mut dnas = Vec::new();
-					dnas.push(dna.clone());
-					let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(dnas);
-					<KittyOwner<T>>::insert(&owner, bounded_dnas);
-
-					Self::deposit_event(Event::KittyCreated(dna.clone(), owner));
-					Ok(().into())
-				},
-			}
+			Self::update_kitties_of_owner(
+				owner.clone(),
+				owner.clone(),
+				dna.clone(),
+				StorageUpdateType::CreateKitty,
+			)?;
+			Ok(())
 		}
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
@@ -201,39 +194,13 @@ pub mod pallet {
 			<KittyOwner<T>>::insert(&owner, kitties_of_owner);
 
 			// Add a new kitty to the new owner
-			match <KittyOwner<T>>::try_get(&new_owner) {
-				Ok(mut _kitties) => match _kitties.binary_search(&dna) {
-					Ok(_) => Err(<Error<T>>::KittyAlreadyExist.into()),
-					Err(_) => {
-						_kitties
-							.try_push(dna.clone())
-							.map_err(|_| <Error<T>>::KittyLimitReached)?;
-
-						<KittyOwner<T>>::insert(&new_owner, _kitties);
-
-						Self::deposit_event(Event::KittyChangeOwner(
-							dna.clone(),
-							owner.clone(),
-							new_owner.clone(),
-						));
-						Ok(().into())
-					},
-				},
-				Err(_) => {
-					let mut _dnas = Vec::new();
-					_dnas.push(dna.clone());
-
-					let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(_dnas);
-					<KittyOwner<T>>::insert(&new_owner, bounded_dnas.clone());
-
-					Self::deposit_event(Event::KittyChangeOwner(
-						dna.clone(),
-						owner.clone(),
-						new_owner.clone(),
-					));
-					Ok(().into())
-				},
-			}
+			Self::update_kitties_of_owner(
+				owner.clone(),
+				new_owner.clone(),
+				dna.clone(),
+				StorageUpdateType::ChangeOwner,
+			)?;
+			Ok(())
 		}
 	}
 }
@@ -258,5 +225,46 @@ impl<T: Config> Pallet<T> {
 
 		Self::deposit_event(Event::<T>::DnaGenerated(dna_random_seed));
 		Ok(dna)
+	}
+
+	fn update_kitties_of_owner(
+		who: T::AccountId,
+		owner: T::AccountId,
+		kitty_dna: T::Hash,
+		update_type: StorageUpdateType,
+	) -> Result<(), Error<T>> {
+		let event = match update_type {
+			StorageUpdateType::CreateKitty => {
+				Event::<T>::KittyCreated(kitty_dna.clone(), who.clone())
+			},
+			StorageUpdateType::ChangeOwner => {
+				Event::<T>::KittyChangeOwner(kitty_dna.clone(), who.clone(), owner.clone())
+			},
+		};
+		match <KittyOwner<T>>::try_get(&owner) {
+			Ok(mut _kitties) => match _kitties.binary_search(&kitty_dna) {
+				Ok(_) => Err(<Error<T>>::KittyAlreadyExist.into()),
+				Err(_) => {
+					_kitties
+						.try_push(kitty_dna.clone())
+						.map_err(|_| <Error<T>>::KittyLimitReached)?;
+
+					<KittyOwner<T>>::insert(&owner, _kitties);
+
+					Self::deposit_event(event);
+					Ok(().into())
+				},
+			},
+			Err(_) => {
+				let mut _kitty_dnas = Vec::new();
+				_kitty_dnas.push(kitty_dna.clone());
+
+				let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(_kitty_dnas);
+				<KittyOwner<T>>::insert(&owner, bounded_dnas.clone());
+
+				Self::deposit_event(event);
+				Ok(().into())
+			},
+		}
 	}
 }
