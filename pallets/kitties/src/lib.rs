@@ -15,13 +15,16 @@ pub use pallet::*;
 // mod benchmarking;
 use frame_support::inherent::Vec;
 use frame_support::pallet_prelude::*;
+use frame_support::sp_runtime::ArithmeticError;
 use frame_support::traits::Randomness;
 use frame_support::traits::Time;
 use frame_system::pallet_prelude::*;
 
 pub type CreatedDate<T> = <<T as Config>::CreatedDate as frame_support::traits::Time>::Moment;
+
 #[frame_support::pallet]
 pub mod pallet {
+
 	pub use super::*;
 
 	#[derive(TypeInfo, Encode, Decode, Default)]
@@ -104,8 +107,11 @@ pub mod pallet {
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
+		OwnerNotFound,
+		KittyNotFound,
+		KittyAlreadyExist,
 		DuplicatedOwner,
-		ExceedLimit,
+		KittyLimitReached,
 		MoveValueNotExist,
 		MoveValueAlreadyExist,
 		/// Error names should be descriptive.
@@ -137,31 +143,39 @@ pub mod pallet {
 				gender,
 				created_date: T::CreatedDate::now(),
 			};
-			Kitties::<T>::insert(&dna, kitty);
 
 			// Update the current quantity of kitty
-			let mut current_quantity = <KittyQuantity<T>>::get();
-			current_quantity += 1;
-			<KittyQuantity<T>>::put(current_quantity);
+			let current_quantity = <KittyQuantity<T>>::get();
+			let new_quantity = current_quantity.checked_add(1).ok_or(ArithmeticError::Overflow)?;
+			<KittyQuantity<T>>::put(new_quantity);
+
+			Kitties::<T>::insert(&dna, kitty);
 
 			// Update owner's kitties
-			if <KittyOwner<T>>::contains_key(&owner) {
-				<KittyOwner<T>>::try_mutate(&owner, |dnas| match dnas {
-					Some(_dnas) => _dnas.try_push(dna.clone()).map_err(|_| Error::<T>::ExceedLimit),
-					_ => Err(Error::<T>::NoneValue),
-				})?;
-			} else {
-				let mut dnas = Vec::new();
-				dnas.push(dna.clone());
-				let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(dnas);
-				<KittyOwner<T>>::insert(&owner, bounded_dnas);
+			match <KittyOwner<T>>::try_get(&owner) {
+				Ok(mut _kitties) => match _kitties.binary_search(&dna) {
+					Ok(_) => Err(<Error<T>>::KittyAlreadyExist.into()),
+					Err(_) => {
+						_kitties
+							.try_push(dna.clone())
+							.map_err(|_| <Error<T>>::KittyLimitReached)?;
+
+						<KittyOwner<T>>::insert(&owner, _kitties);
+
+						Self::deposit_event(Event::KittyCreated(dna.clone(), owner));
+						Ok(().into())
+					},
+				},
+				Err(_) => {
+					let mut dnas = Vec::new();
+					dnas.push(dna.clone());
+					let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(dnas);
+					<KittyOwner<T>>::insert(&owner, bounded_dnas);
+
+					Self::deposit_event(Event::KittyCreated(dna.clone(), owner));
+					Ok(().into())
+				},
 			}
-
-			// Emit an event.
-			Self::deposit_event(Event::KittyCreated(dna.clone(), owner));
-
-			// Return a successful DispatchResultWithPostInfo
-			Ok(())
 		}
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
@@ -174,49 +188,52 @@ pub mod pallet {
 			ensure!(owner != new_owner, Error::<T>::DuplicatedOwner);
 
 			// Update the new owner in Kitties storage
-			let kitty_by_dna = <Kitties<T>>::get(&dna);
-			ensure!(kitty_by_dna.is_some(), Error::<T>::NoneValue);
-
-			if let Some(mut kitty) = kitty_by_dna {
-				kitty.owner = new_owner.clone();
-				<Kitties<T>>::insert(&dna, kitty);
-			}
+			let mut kitty_by_dna = <Kitties<T>>::get(&dna).ok_or(Error::<T>::KittyNotFound)?;
+			kitty_by_dna.owner = new_owner.clone();
+			<Kitties<T>>::insert(&dna, kitty_by_dna);
 
 			// Update KittyOwner storage
-			// Remove the kitty no longer belong to the old owner
-			let kitty_owners = Self::kitty_owner(&owner);
-			ensure!(kitty_owners.is_some(), Error::<T>::MoveValueNotExist);
-			<KittyOwner<T>>::mutate(&owner, |dnas| {
-				if let Some(_dnas) = dnas {
-					_dnas.retain(|__dna| __dna != &dna);
-				}
-			});
+
+			// Remove the kitty of the old owner
+			let mut kitties_of_owner =
+				<KittyOwner<T>>::get(&owner).ok_or(<Error<T>>::OwnerNotFound)?;
+			kitties_of_owner.retain(|_dna| _dna != &dna);
+			<KittyOwner<T>>::insert(&owner, kitties_of_owner);
 
 			// Add a new kitty to the new owner
-			if <KittyOwner<T>>::contains_key(&new_owner) {
-				<KittyOwner<T>>::mutate(&new_owner, |dnas| {
-					if let Some(_dnas) = dnas {
-						_dnas
+			match <KittyOwner<T>>::try_get(&new_owner) {
+				Ok(mut _kitties) => match _kitties.binary_search(&dna) {
+					Ok(_) => Err(<Error<T>>::KittyAlreadyExist.into()),
+					Err(_) => {
+						_kitties
 							.try_push(dna.clone())
-							.expect("Already full! Can not receive any kitty more!");
-					}
-				});
-			} else {
-				let mut _dnas = Vec::new();
-				_dnas.push(dna.clone());
+							.map_err(|_| <Error<T>>::KittyLimitReached)?;
 
-				let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(_dnas);
-				<KittyOwner<T>>::insert(&new_owner, bounded_dnas);
+						<KittyOwner<T>>::insert(&new_owner, _kitties);
+
+						Self::deposit_event(Event::KittyChangeOwner(
+							dna.clone(),
+							owner.clone(),
+							new_owner.clone(),
+						));
+						Ok(().into())
+					},
+				},
+				Err(_) => {
+					let mut _dnas = Vec::new();
+					_dnas.push(dna.clone());
+
+					let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(_dnas);
+					<KittyOwner<T>>::insert(&new_owner, bounded_dnas.clone());
+
+					Self::deposit_event(Event::KittyChangeOwner(
+						dna.clone(),
+						owner.clone(),
+						new_owner.clone(),
+					));
+					Ok(().into())
+				},
 			}
-
-			// Emit an event
-			Self::deposit_event(Event::KittyChangeOwner(
-				dna.clone(),
-				owner.clone(),
-				new_owner.clone(),
-			));
-
-			Ok(())
 		}
 	}
 }
