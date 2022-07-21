@@ -37,28 +37,22 @@ pub mod pallet {
 		created_date: CreatedDate<T>,
 	}
 
-	#[derive(TypeInfo, Encode, Decode, Debug)]
+	#[derive(TypeInfo, Encode, Decode, Debug, Default)]
+
 	pub enum Gender {
+		#[default]
 		Male,
 		Female,
 	}
 
-	impl Default for Gender {
-		fn default() -> Self {
-			Self::Male
-		}
-	}
+	#[derive(Default)]
 
 	pub enum StorageUpdateType {
+		#[default]
 		CreateKitty,
 		ChangeOwner,
 	}
 
-	impl Default for StorageUpdateType {
-		fn default() -> Self {
-			Self::CreateKitty
-		}
-	}
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
