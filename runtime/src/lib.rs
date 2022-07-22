@@ -12,6 +12,7 @@ use pallet_grandpa::{
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
+use frame_system::EnsureRoot;
 use sp_runtime::{
 	create_runtime_str, generic, impl_opaque_keys,
 	traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, NumberFor, Verify},
@@ -38,6 +39,7 @@ pub use frame_support::{
 pub use frame_system::Call as SystemCall;
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
+// pub use pallet_treasury::Call as TreasuryCall;
 use pallet_transaction_payment::CurrencyAdapter;
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
@@ -280,6 +282,16 @@ impl pallet_kitties::Config for Runtime {
 	type RandomnessSource = RandomnessCollectiveFlip;
 }
 
+impl pallet_nicks::Config for Runtime {
+	type Event = Event;
+	type Currency = Balances;
+	type ReservationFee = ConstU128<100>;
+	type MaxLength = ConstU32<15>;
+	type MinLength = ConstU32<5>;
+	type ForceOrigin = EnsureRoot<AccountId>;
+	type Slashed = ();
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -299,6 +311,7 @@ construct_runtime!(
 		TemplateModule: pallet_template,
 		// Include the custom logic from the pallet-kitties in the runtime.
 		Kitties: pallet_kitties,
+		Nicks: pallet_nicks,
 	}
 );
 

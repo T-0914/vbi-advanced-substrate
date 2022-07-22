@@ -25,7 +25,6 @@ pub type DnaHashType = H256;
 
 #[frame_support::pallet]
 pub mod pallet {
-
 	pub use super::*;
 
 	#[derive(TypeInfo, Encode, Decode, Default)]
