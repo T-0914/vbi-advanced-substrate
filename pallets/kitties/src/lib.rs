@@ -16,11 +16,12 @@ pub use pallet::*;
 use frame_support::inherent::Vec;
 use frame_support::pallet_prelude::*;
 use frame_support::sp_runtime::ArithmeticError;
-use frame_support::traits::Randomness;
 use frame_support::traits::Time;
+use frame_support::{sp_runtime::app_crypto::sp_core::H256, traits::Randomness};
 use frame_system::pallet_prelude::*;
 
 pub type CreatedDate<T> = <<T as Config>::CreatedDate as frame_support::traits::Time>::Moment;
+pub type DnaHashType = H256;
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -30,7 +31,7 @@ pub mod pallet {
 	#[derive(TypeInfo, Encode, Decode, Default)]
 	#[scale_info(skip_type_params(T))]
 	pub struct Kitty<T: Config> {
-		dna: T::Hash,
+		dna: DnaHashType,
 		owner: T::AccountId,
 		price: u32,
 		gender: Gender,
@@ -61,7 +62,7 @@ pub mod pallet {
 
 		type CreatedDate: Time;
 
-		type RandomnessSource: Randomness<Self::Hash, Self::BlockNumber>;
+		type RandomnessSource: Randomness<DnaHashType, Self::BlockNumber>;
 
 		#[pallet::constant]
 		type KittyLimit: Get<u32>;
@@ -86,7 +87,8 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn kitties)]
-	pub type Kitties<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, Kitty<T>, OptionQuery>;
+	pub type Kitties<T: Config> =
+		StorageMap<_, Blake2_128Concat, DnaHashType, Kitty<T>, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn kitty_owner)]
@@ -94,7 +96,7 @@ pub mod pallet {
 		_,
 		Blake2_128Concat,
 		T::AccountId,
-		BoundedVec<T::Hash, T::KittyLimit>,
+		BoundedVec<DnaHashType, T::KittyLimit>,
 		OptionQuery,
 	>;
 
@@ -103,9 +105,9 @@ pub mod pallet {
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		KittyCreated(T::Hash, T::AccountId),
-		KittyChangeOwner(T::Hash, T::AccountId, T::AccountId),
-		DnaGenerated(T::Hash),
+		KittyCreated(DnaHashType, T::AccountId),
+		KittyChangeOwner(DnaHashType, T::AccountId, T::AccountId),
+		DnaGenerated(DnaHashType),
 	}
 
 	// Errors inform users that something went wrong.
@@ -137,7 +139,7 @@ pub mod pallet {
 			let owner = ensure_signed(origin)?;
 
 			let dna = Self::gen_dna()?;
-			let gender = Self::gen_gender()?;
+			let gender = Self::gen_gender(&dna)?;
 
 			// Create a new kitty
 			let kitty = Kitty::<T> {
@@ -168,7 +170,7 @@ pub mod pallet {
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn change_owner(
 			origin: OriginFor<T>,
-			dna: T::Hash,
+			dna: DnaHashType,
 			new_owner: T::AccountId,
 		) -> DispatchResult {
 			let owner = ensure_signed(origin)?;
@@ -201,8 +203,20 @@ pub mod pallet {
 
 // helper function
 impl<T: Config> Pallet<T> {
-	fn gen_gender() -> Result<Gender, Error<T>> {
-		Ok(Gender::Male)
+	fn gen_gender(dna: &DnaHashType) -> Result<Gender, Error<T>> {
+		let dna_vec = dna.as_bytes().to_vec();
+		let gender = dna_vec.get(1);
+
+		match gender {
+			Some(_gender) => {
+				if *_gender % 2 == 0 {
+					Ok(Gender::Male)
+				} else {
+					Ok(Gender::Female)
+				}
+			},
+			None => Err(<Error<T>>::NoneValue),
+		}
 	}
 
 	fn encode_and_update_nonce() -> Vec<u8> {
@@ -211,7 +225,7 @@ impl<T: Config> Pallet<T> {
 		nonce.encode()
 	}
 
-	fn gen_dna() -> Result<T::Hash, Error<T>> {
+	fn gen_dna() -> Result<DnaHashType, Error<T>> {
 		let dna_nonce = Self::encode_and_update_nonce();
 
 		let (dna_random_seed, _) = T::RandomnessSource::random_seed();
@@ -224,7 +238,7 @@ impl<T: Config> Pallet<T> {
 	fn update_kitties_of_owner(
 		who: T::AccountId,
 		owner: T::AccountId,
-		kitty_dna: T::Hash,
+		kitty_dna: DnaHashType,
 		update_type: StorageUpdateType,
 	) -> Result<(), Error<T>> {
 		let event = match update_type {
@@ -253,7 +267,8 @@ impl<T: Config> Pallet<T> {
 				let mut _kitty_dnas = Vec::new();
 				_kitty_dnas.push(kitty_dna.clone());
 
-				let bounded_dnas = <BoundedVec<T::Hash, T::KittyLimit>>::truncate_from(_kitty_dnas);
+				let bounded_dnas =
+					<BoundedVec<DnaHashType, T::KittyLimit>>::truncate_from(_kitty_dnas);
 				<KittyOwner<T>>::insert(&owner, bounded_dnas.clone());
 
 				Self::deposit_event(event);
