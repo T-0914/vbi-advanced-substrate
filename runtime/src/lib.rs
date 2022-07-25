@@ -48,8 +48,11 @@ pub use sp_runtime::{Perbill, Permill};
 /// Import the template pallet.
 pub use pallet_template;
 
-// /// Import the template pallet.
+// /// Import the kitties pallet.
 pub use pallet_kitties;
+
+// /// Import the demo pallet.
+pub use pallet_demo;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -293,7 +296,7 @@ impl pallet_nicks::Config for Runtime {
 }
 
 impl pallet_demo::Config for Runtime {
-	type Event = Event
+	type Event = Event;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -361,7 +364,8 @@ mod benches {
 		[frame_system, SystemBench::<Runtime>]
 		[pallet_balances, Balances]
 		[pallet_timestamp, Timestamp]
-		[pallet_template, TemplateModule]
+		// [pallet_template, TemplateModule]
+		[pallet_kitties, Kitties]
 	);
 }
 
@@ -541,7 +545,7 @@ impl_runtime_apis! {
 
 			let mut batches = Vec::<BenchmarkBatch>::new();
 			let params = (&config, &whitelist);
-			add_benchmarks!(params, batches);
+			add_benchmarks!(params, batches, pallet_kitties, Kitties);
 
 			Ok(batches)
 		}

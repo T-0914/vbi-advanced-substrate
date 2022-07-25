@@ -11,8 +11,9 @@ pub use pallet::*;
 // #[cfg(test)]
 // mod tests;
 
-// #[cfg(feature = "runtime-benchmarks")]
-// mod benchmarking;
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 use frame_support::dispatch::fmt;
 use frame_support::inherent::Vec;
 use frame_support::pallet_prelude::*;
