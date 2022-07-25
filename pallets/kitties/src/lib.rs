@@ -13,6 +13,7 @@ pub use pallet::*;
 
 // #[cfg(feature = "runtime-benchmarks")]
 // mod benchmarking;
+use frame_support::dispatch::fmt;
 use frame_support::inherent::Vec;
 use frame_support::pallet_prelude::*;
 use frame_support::sp_runtime::ArithmeticError;
@@ -35,6 +36,18 @@ pub mod pallet {
 		price: u32,
 		gender: Gender,
 		created_date: CreatedDate<T>,
+	}
+
+	impl<T: Config> fmt::Debug for Kitty<T> {
+		fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+			f.debug_struct("Kitty")
+				.field("dna", &self.dna)
+				.field("owner", &self.owner)
+				.field("price", &self.price)
+				.field("gender", &self.gender)
+				.field("created_date", &self.created_date)
+				.finish()
+		}
 	}
 
 	#[derive(TypeInfo, Encode, Decode, Debug, Default)]
