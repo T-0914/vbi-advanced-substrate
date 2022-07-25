@@ -2,19 +2,19 @@ use crate::{mock::*, Error};
 use frame_support::{assert_noop, assert_ok};
 
 #[test]
-fn it_works_for_default_value() {
+fn should_create_a_student_with_normal_name_and_age() {
 	new_test_ext().execute_with(|| {
-		// Dispatch a signed extrinsic.
-		assert_ok!(TemplateModule::do_something(Origin::signed(1), 42));
-		// Read pallet storage and assert an expected result.
-		assert_eq!(TemplateModule::something(), Some(42));
+		assert_ok!(DemoModule::create_student(Origin::signed(1), b"shyoski", 24));
+		assert_eq!(DemoModule::student_id(), 1);
 	});
 }
 
 #[test]
-fn correct_error_for_none_value() {
+fn create_student_should_false_with_age_lower_than_20() {
 	new_test_ext().execute_with(|| {
-		// Ensure the expected error is thrown when no value is present.
-		assert_noop!(TemplateModule::cause_error(Origin::signed(1)), Error::<Test>::NoneValue);
+		assert_noop!(
+			DemoModule::create_student(Origin::signed(1), b"shyoski", 20),
+			Error::<T>::TooYoung
+		);
 	});
 }

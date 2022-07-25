@@ -6,13 +6,13 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use frame_system::EnsureRoot;
 use pallet_grandpa::{
 	fg_primitives, AuthorityId as GrandpaId, AuthorityList as GrandpaAuthorityList,
 };
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
-use frame_system::EnsureRoot;
 use sp_runtime::{
 	create_runtime_str, generic, impl_opaque_keys,
 	traits::{AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, NumberFor, Verify},
@@ -292,6 +292,10 @@ impl pallet_nicks::Config for Runtime {
 	type Slashed = ();
 }
 
+impl pallet_demo::Config for Runtime {
+	type Event = Event
+}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
@@ -312,6 +316,7 @@ construct_runtime!(
 		// Include the custom logic from the pallet-kitties in the runtime.
 		Kitties: pallet_kitties,
 		Nicks: pallet_nicks,
+		DemoModule: pallet_demo,
 	}
 );
 

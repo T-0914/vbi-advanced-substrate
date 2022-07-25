@@ -32,10 +32,10 @@ pub mod pallet {
 	impl<T: Config> fmt::Debug for Students<T> {
 		fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 			f.debug_struct("Students")
-			 .field("name", &self.name)
-			 .field("age", &self.gender)
-			 .field("account", &self.account)
-			 .finish()
+				.field("name", &self.name)
+				.field("age", &self.gender)
+				.field("account", &self.account)
+				.finish()
 		}
 	}
 
@@ -115,13 +115,14 @@ pub mod pallet {
 			let who = ensure_signed(origin)?;
 			ensure!(age > 20, Error::<T>::TooYoung);
 			let gender = Self::gen_gender(name.clone())?;
-			let student = Students { name: name.clone(), age, gender: gender.clone(), account: who };
+			let student =
+				Students { name: name.clone(), age, gender: gender.clone(), account: who };
 			// let current_id = Self::student_id();
 			// let current_id = StudentId::<T>::get();
 			let mut current_id = <StudentId<T>>::get();
 
 			log::info!("Current id : {}", current_id);
-			log::info!("Genderr : {:?}", gender);
+			log::info!("Gender : {:?}", gender);
 			log::warn!("Student : {:?}", &student);
 
 			// Student::<T>::insert(current_id, student);
@@ -147,11 +148,3 @@ impl<T> Pallet<T> {
 		Ok(res)
 	}
 }
-
-// Tóm tắt:
-//Custom type: Struct ,Enum
-// Sử dụng generic type đối với trait
-// helper function
-// origin
-// một số method cơ bản liên quan tới read/write storage
-// giải quuêys một số bug có thể có .
