@@ -364,7 +364,7 @@ mod benches {
 		[frame_system, SystemBench::<Runtime>]
 		[pallet_balances, Balances]
 		[pallet_timestamp, Timestamp]
-		// [pallet_template, TemplateModule]
+		[pallet_template, TemplateModule]
 		[pallet_kitties, Kitties]
 	);
 }
@@ -545,7 +545,8 @@ impl_runtime_apis! {
 
 			let mut batches = Vec::<BenchmarkBatch>::new();
 			let params = (&config, &whitelist);
-			add_benchmarks!(params, batches, pallet_kitties, Kitties);
+			// add_benchmarks!(params, batches, pallet_kitties, Kitties::<Runtime>);
+			add_benchmarks!(params, batches);
 
 			Ok(batches)
 		}

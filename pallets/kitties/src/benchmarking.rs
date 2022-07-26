@@ -11,7 +11,8 @@ benchmarks! {
 	create_kitty {
 		let price = 100;
 		let caller: T::AccountId = whitelisted_caller();
-	}: create_kitty(RawOrigin::Signed(caller), price);
+	}: create_kitty(RawOrigin::Signed(caller), price)
+
 	verify {
 		assert_eq!(KittyQuantity::<T>::get(), 1);
 	}

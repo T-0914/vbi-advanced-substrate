@@ -87,6 +87,7 @@ std = [
 	"sp-transaction-pool/std",
 	"sp-version/std",
 	"pallet-kitties/std",
+	"pallet-demo/std",
 	"pallet-nicks/std",
 ]
 runtime-benchmarks = [
