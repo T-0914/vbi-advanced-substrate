@@ -21,7 +21,7 @@ use frame_support::traits::Time;
 use frame_support::{sp_runtime::app_crypto::sp_core::H256, traits::Randomness};
 use frame_system::pallet_prelude::*;
 
-pub type CreatedDate<T> = <<T as Config>::CreatedDate as frame_support::traits::Time>::Moment;
+pub type TimeProvider<T> = <<T as Config>::TimeProvider as frame_support::traits::Time>::Moment;
 pub type DnaHashType = H256;
 
 #[frame_support::pallet]
@@ -35,7 +35,7 @@ pub mod pallet {
 		owner: T::AccountId,
 		price: u32,
 		gender: Gender,
-		created_date: CreatedDate<T>,
+		created_date: TimeProvider<T>,
 	}
 
 	impl<T: Config> fmt::Debug for Kitty<T> {
@@ -72,7 +72,7 @@ pub mod pallet {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-		type CreatedDate: Time;
+		type TimeProvider: Time;
 
 		type RandomnessSource: Randomness<DnaHashType, Self::BlockNumber>;
 
@@ -143,7 +143,7 @@ pub mod pallet {
 	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		#[pallet::weight(119_681_000 + T::DbWeight::get().reads_writes(5, 4))]
 		pub fn create_kitty(origin: OriginFor<T>, price: u32) -> DispatchResult {
 			// Check that the extrinsic was signed and get the signer.
 			// This function will return an error if the extrinsic is not signed.
@@ -159,7 +159,7 @@ pub mod pallet {
 				owner: owner.clone(),
 				price,
 				gender,
-				created_date: T::CreatedDate::now(),
+				created_date: T::TimeProvider::now(),
 			};
 
 			// Update the current quantity of kitty
@@ -179,7 +179,7 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		#[pallet::weight(103_150_000 + T::DbWeight::get().reads_writes(3, 3))]
 		pub fn change_owner(
 			origin: OriginFor<T>,
 			dna: DnaHashType,

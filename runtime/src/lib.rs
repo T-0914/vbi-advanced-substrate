@@ -280,7 +280,7 @@ parameter_types! {
 /// Configure the pallet-kitties in pallets/kitties.
 impl pallet_kitties::Config for Runtime {
 	type Event = Event;
-	type CreatedDate = Timestamp;
+	type TimeProvider = Timestamp;
 	type KittyLimit = KittyLimit;
 	type RandomnessSource = RandomnessCollectiveFlip;
 }
